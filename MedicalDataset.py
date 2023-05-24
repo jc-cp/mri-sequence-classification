@@ -1,23 +1,24 @@
-import os
-import pandas
-import torch
-import nibabel
-import numpy
-import random
-import cv2
-import SimpleITK as sitk
-import torchvision.transforms.functional as TF
 import glob
 import operator
+import os
+import random
 import time
+from math import ceil, floor
 
-from math import floor, ceil
-from torch.utils.data import Dataset
-from imgaug import augmenters as aug
+import cv2
+import nibabel
+import numpy
+import pandas
+import SimpleITK as sitk
+import torch
+import torchvision.transforms.functional as TF
 from dicom2nifti import dicom_series_to_nifti
-from dicom2nifti.image_reorientation import reorient_image, _reorient_3d
-from dicom2nifti.image_volume import load, ImageVolume
+from dicom2nifti.image_reorientation import _reorient_3d, reorient_image
+from dicom2nifti.image_volume import ImageVolume, load
+from imgaug import augmenters as aug
 from SimpleITK import ImageFileReader, ImageSeriesReader
+from torch.utils.data import Dataset
+
 from time_util import time_format
 
 
@@ -29,19 +30,19 @@ class MedicalDataset(Dataset):
         self.is_train = not test
         self.loaded_data = self.load_data()
         if not self.consider_other_class:
-            print('Actually loaded:', self.__len__(), '("Other" class discarded)')
+            print("Actually loaded:", self.__len__(), '("Other" class discarded)')
 
     def load_data(self):
         data = []
         start = time.time()
-        print('Starting loading data...')
+        print("Starting loading data...")
         # print(self.images), exit()
         for i, (image_path, label) in self.images.iterrows():
             image_path = os.path.join(os.getcwd(), image_path)
             if not self.consider_other_class and label == 4:
                 print('DISCARDED: "Other" class -', image_path)
                 continue
-            print('Loading', image_path)
+            print("Loading", image_path)
             if os.path.isdir(image_path):
                 reader = ImageSeriesReader()
                 sorted_file_names = reader.GetGDCMSeriesFileNames(image_path)
@@ -50,21 +51,34 @@ class MedicalDataset(Dataset):
             else:
                 image = sitk.ReadImage(image_path)
 
-            '''if self.is_train:
-                image = self.rotate(image)'''
-            pixel_data, color_channels, direction = self.normalize(
-                sitk.GetArrayFromImage(image)), image.GetNumberOfComponentsPerPixel(), image.GetDirection()
+            """if self.is_train:
+                image = self.rotate(image)"""
+            pixel_data, color_channels, direction = (
+                self.normalize(sitk.GetArrayFromImage(image)),
+                image.GetNumberOfComponentsPerPixel(),
+                image.GetDirection(),
+            )
 
             if color_channels > 1:
-                pixel_data = numpy.array([cv2.cvtColor(slice, cv2.COLOR_RGB2GRAY) for slice in pixel_data])
+                pixel_data = numpy.array(
+                    [cv2.cvtColor(slice, cv2.COLOR_RGB2GRAY) for slice in pixel_data]
+                )
 
             n_slices = pixel_data.shape[0]
 
             min_slices = 16  # self.min_slices
             if n_slices < min_slices:
-                extended = numpy.zeros((min_slices, pixel_data.shape[1], pixel_data.shape[2])).astype(numpy.uint8)
-                extended[min_slices // 2 - n_slices // 2: min_slices // 2 + n_slices // 2 + n_slices % 2, :,
-                :] = pixel_data.copy()
+                extended = numpy.zeros(
+                    (min_slices, pixel_data.shape[1], pixel_data.shape[2])
+                ).astype(numpy.uint8)
+                extended[
+                    min_slices // 2
+                    - n_slices // 2 : min_slices // 2
+                    + n_slices // 2
+                    + n_slices % 2,
+                    :,
+                    :,
+                ] = pixel_data.copy()
                 for i in range(min_slices // 2 - n_slices // 2):
                     extended[i] = pixel_data[0]
                 for i in range(min_slices // 2 + n_slices // 2 + 1, min_slices):
@@ -72,7 +86,11 @@ class MedicalDataset(Dataset):
                 pixel_data = extended
             else:
                 pixel_data = pixel_data[
-                             n_slices // 2 - min_slices // 2: n_slices // 2 + min_slices // 2 + min_slices % 2]
+                    n_slices // 2
+                    - min_slices // 2 : n_slices // 2
+                    + min_slices // 2
+                    + min_slices % 2
+                ]
                 # pixel_data = numpy.array([pixel_data[int(i*n_slices/(min_slices+1))] for i in range(1, min_slices + 1)])
 
             height, width = pixel_data.shape[1], pixel_data.shape[2]
@@ -83,16 +101,18 @@ class MedicalDataset(Dataset):
                 zoom_out = numpy.zeros(pixel_data.shape).astype(numpy.uint8)
                 for i, slice in enumerate(pixel_data):
                     slice = cv2.resize(slice, (0, 0), fx=ratio, fy=ratio)
-                    zoom_out[i, :slice.shape[0], :slice.shape[1]] = slice
-                    '''ymin = zoom_out.shape[1]//2 - floor(slice.shape[0]/2)
+                    zoom_out[i, : slice.shape[0], : slice.shape[1]] = slice
+                    """ymin = zoom_out.shape[1]//2 - floor(slice.shape[0]/2)
                     ymax = zoom_out.shape[1]//2 + ceil(slice.shape[0]/2)
                     xmin = zoom_out.shape[2]//2 - floor(slice.shape[1]/2)
                     xmax = zoom_out.shape[2]//2 + ceil(slice.shape[1]/2)
-                    zoom_out[i, ymin:ymax, xmin:xmax] = slice'''
+                    zoom_out[i, ymin:ymax, xmin:xmax] = slice"""
                 pixel_data = zoom_out
                 pixel_data = pixel_data[:, :min_dim, :min_dim]
-                assert (pixel_data.shape[1] == pixel_data.shape[2])
-            pixel_data = numpy.array([cv2.resize(slice, (200, 200)) for slice in pixel_data])
+                assert pixel_data.shape[1] == pixel_data.shape[2]
+            pixel_data = numpy.array(
+                [cv2.resize(slice, (200, 200)) for slice in pixel_data]
+            )
             # new_pixel_data = []
             # for slice in pixel_data:
             #    slice = cv2.resize(slice, (200, 200))
@@ -100,11 +120,17 @@ class MedicalDataset(Dataset):
             #        slice = cv2.cvtColor(slice, cv2.COLOR_RGB2GRAY)
             #    new_pixel_data.append(slice)
             # pixel_data = numpy.array(new_pixel_data)
-            assert (pixel_data.shape == (min_slices, 200, 200))
+            assert pixel_data.shape == (min_slices, 200, 200)
             data.append((pixel_data, label))
 
-            print('Loaded', i + 1, '/', len(self.images), '' if self.consider_other_class else '(counting discarded).')
-        print('\nLoading time:', time_format(time.time() - start))
+            print(
+                "Loaded",
+                i + 1,
+                "/",
+                len(self.images),
+                "" if self.consider_other_class else "(counting discarded).",
+            )
+        print("\nLoading time:", time_format(time.time() - start))
         return data
 
     def rotate(self, image):
@@ -116,9 +142,21 @@ class MedicalDataset(Dataset):
             return 0
 
         direction = image.GetDirection()
-        sagittal = (round(direction[0]), round(direction[1]), round(direction[2]))  # Width, 2 (Lateral)
-        coronal = (round(direction[3]), round(direction[4]), round(direction[5]))  # Height, 1 (Front-Back)
-        axial = (round(direction[6]), round(direction[7]), round(direction[8]))  # Layers, 0   (Axial)
+        sagittal = (
+            round(direction[0]),
+            round(direction[1]),
+            round(direction[2]),
+        )  # Width, 2 (Lateral)
+        coronal = (
+            round(direction[3]),
+            round(direction[4]),
+            round(direction[5]),
+        )  # Height, 1 (Front-Back)
+        axial = (
+            round(direction[6]),
+            round(direction[7]),
+            round(direction[8]),
+        )  # Layers, 0   (Axial)
 
         coords_are_left_hand = (axial == numpy.cross(sagittal, coronal)).all()
 
@@ -132,11 +170,13 @@ class MedicalDataset(Dataset):
             z = tuple(random.choice([-1, 1]) * numpy.array(z))
             new_coords_are_left_hand = (z == numpy.cross(x, y)).all()
 
-        rotation_matrix = numpy.array([
-            [cos(sagittal, x), cos(coronal, x), cos(axial, x)],
-            [cos(sagittal, y), cos(coronal, y), cos(axial, y)],
-            [cos(sagittal, z), cos(coronal, z), cos(axial, z)]
-        ]).astype(numpy.double)
+        rotation_matrix = numpy.array(
+            [
+                [cos(sagittal, x), cos(coronal, x), cos(axial, x)],
+                [cos(sagittal, y), cos(coronal, y), cos(axial, y)],
+                [cos(sagittal, z), cos(coronal, z), cos(axial, z)],
+            ]
+        ).astype(numpy.double)
 
         rotation_transform = sitk.AffineTransform(3)
         rotation_transform.SetMatrix(rotation_matrix.ravel())
@@ -157,13 +197,13 @@ class MedicalDataset(Dataset):
     def rotate_RAS(self, image):
         # image = self.normalize(image)
 
-        '''sagittal = (round(direction[0]), round(direction[1]), round(direction[2])) #Width, 2 (Lateral)
+        """sagittal = (round(direction[0]), round(direction[1]), round(direction[2])) #Width, 2 (Lateral)
         coronal = (round(direction[3]), round(direction[4]), round(direction[5])) #Height, 1 (Front-Back)
         axial = (round(direction[6]), round(direction[7]), round(direction[8])) #Layers, 0   (Axial)
-        
-        'vectors = [axial, coronal, sagittal]'''
+
+        'vectors = [axial, coronal, sagittal]"""
         # shape = [0, 1, 2], random.shuffle(shape)
-        '''for i, vector in enumerate(vectors):
+        """for i, vector in enumerate(vectors):
             if -1 in vector:
                 image = numpy.flip(image, axis = vectors.index(vector))
             
@@ -172,7 +212,7 @@ class MedicalDataset(Dataset):
             if vector in [(0, 1, 0), (0, -1, 0)]:
                 shape[i] = vectors.index(coronal)
             if vector in [(0, 0, 1), (0, 0, -1)]:
-                shape[i] = vectors.index(axial)'''
+                shape[i] = vectors.index(axial)"""
 
         # if shape != [0, 1, 2]:
         # If transposed, matrix must be flipped to achieve the sensation of being rotated over plane
@@ -183,7 +223,9 @@ class MedicalDataset(Dataset):
                 image = numpy.rot90(image, axes=axes)
 
         height, width = image.shape[0], image.shape[1]
-        yroll, xroll = random.randint(-height // 10, height // 10), random.randint(-width // 10, width // 10)
+        yroll, xroll = random.randint(-height // 10, height // 10), random.randint(
+            -width // 10, width // 10
+        )
         image = numpy.roll(image, yroll, axis=0)
         image = numpy.roll(image, xroll, axis=1)
 
@@ -215,8 +257,12 @@ class MedicalDataset(Dataset):
         # image = numpy.flip(image, 1)
         # print('Rotating', rotation_angle, 'degrees!')
         if self.is_train:
-            rot_mat = cv2.getRotationMatrix2D(tuple(numpy.array(image.shape[1::-1]) / 2), rotation_angle, 1.0)
-            image = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
+            rot_mat = cv2.getRotationMatrix2D(
+                tuple(numpy.array(image.shape[1::-1]) / 2), rotation_angle, 1.0
+            )
+            image = cv2.warpAffine(
+                image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR
+            )
 
             image = self.rotate_RAS(image)
 
@@ -225,8 +271,8 @@ class MedicalDataset(Dataset):
 
             bright = aug.Multiply((0.1, 2.0))
             image = bright.augment_image(image)
-            '''contrast = aug.LinearContrast((0, 1.5))
-            image = contrast.augment_image(image)'''
+            """contrast = aug.LinearContrast((0, 1.5))
+            image = contrast.augment_image(image)"""
 
             if prob_blur:
                 blur = aug.GaussianBlur(sigma)
@@ -238,7 +284,9 @@ class MedicalDataset(Dataset):
             image = numpy.array([image])
 
         aug_tensor = torch.tensor(image.astype(numpy.float32))
-        aug_tensor = TF.normalize(aug_tensor, tuple(image.shape[0] * [0]), tuple(image.shape[0] * [1]))
+        aug_tensor = TF.normalize(
+            aug_tensor, tuple(image.shape[0] * [0]), tuple(image.shape[0] * [1])
+        )
         return aug_tensor
 
     def __getitem__(self, idx):
