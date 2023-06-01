@@ -1,0 +1,23 @@
+Path, Label
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_001/BraTS20_Validation_001_flair.nii.gz, 0
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_001/BraTS20_Validation_001_t1ce.nii.gz, 2
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_001/BraTS20_Validation_001_t1.nii.gz, 1
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_001/BraTS20_Validation_001_t2.nii.gz, 3
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_068/BraTS20_Validation_068_t1ce.nii.gz,2
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_068/BraTS20_Validation_068_flair.nii.gz,0
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_068/BraTS20_Validation_068_t1.nii.gz,1
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_068/BraTS20_Validation_068_t2.nii.gz,3
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_004/BraTS20_Validation_004_flair.nii.gz,0
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_004/BraTS20_Validation_004_t1ce.nii.gz,2
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_004/BraTS20_Validation_004_t2.nii.gz,3
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_004/BraTS20_Validation_004_t1.nii.gz,1
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_124/BraTS20_Validation_124_t2.nii.gz,3
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_124/BraTS20_Validation_124_t1ce.nii.gz,2
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_124/BraTS20_Validation_124_t1.nii.gz,1
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_124/BraTS20_Validation_124_flair.nii.gz,0
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_092/BraTS20_Validation_092_flair.nii.gz,0
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_092/BraTS20_Validation_092_t2.nii.gz,3
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_092/BraTS20_Validation_092_t1.nii.gz,1
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_092/BraTS20_Validation_092_t1ce.nii.gz,2
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_035/BraTS20_Validation_035_t1ce.nii.gz,2
+/mnt/93E8-0534/JuanCarlos/BraTS2020/MICCAI_BraTS2020_ValidationData/BraTS20_Validation_035/BraTS20_Validation_035_flair.nii.gz,0

@@ -2,23 +2,22 @@ import argparse
 import os
 import random
 import time
+import pandas as pd
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy
-import seaborn as sns
-import pandas as pd
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import torch.utils.data as data
 
-# from pandas_ml import ConfusionMatrix
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-
-from MedicalDataset import MedicalDataset
+from MedicalDataset_long import MedicalDataset
 from models import select_net
 from time_util import time_format
+
+# TODO:
+# change the test_data_path
+# check default for 3D
+# check column of csv -- currently: 'data-frame'
+# check storage of prediciton
 
 
 def parse_args():
@@ -79,6 +78,7 @@ def fix_random_seeds():
 if __name__ == "__main__":
     args = parse_args()
     test_data_path = args.test_data_path
+    data_frame = pd.read_csv(test_data_path)
     model_file = args.model_file
     n_slices = args.slices
     tridim = args.tridim
@@ -95,6 +95,7 @@ if __name__ == "__main__":
         min_slices=n_slices,
         consider_other_class=consider_other_class,
         test=True,
+        predict=True,
     )
     test_loader = data.DataLoader(test_set, num_workers=8, pin_memory=True)
     # test_loader = data.DataLoader(test_set, pin_memory = True)
@@ -112,68 +113,23 @@ if __name__ == "__main__":
     # test
     net.load_state_dict(torch.load(os.path.join(models_dir, model_file)))
     net.eval()
-    correct = 0
-    total = 0
-    correct_per_class = [0] * len(classes)
-    total_per_class = [0] * len(classes)
-    actual_classes = []
     predicted_classes = []
-    wrong_predictions = []
     with torch.no_grad():
-        for i, (pixel_data, label, path) in enumerate(test_loader):
-            label_as_num = label.numpy()[0]
+        for i, (pixel_data, path) in enumerate(test_loader):
             if tridim:
                 pixel_data = pixel_data.view(-1, 1, 10, 200, 200)
 
             outputs = net(pixel_data.cuda())
             _, predicted = torch.max(outputs.data, 1)
 
-            total += label.size(0)
-            correct += (predicted == label.cuda()).sum().item()
-            total_per_class[label_as_num] += label.size(0)
-            correct_per_class[label_as_num] += (predicted == label.cuda()).sum().item()
+            predicted_class = classes[predicted.cpu().numpy()[0]]
+            predicted_classes.append(predicted_class)
 
-            actual_classes.append(classes[label_as_num])
-            predicted_classes.append(classes[predicted.cpu().numpy()[0]])
-
-            if predicted != label.cuda():
-                wrong_predictions.append(
-                    (
-                        path[0],
-                        classes[label.numpy()[0]],
-                        classes[predicted.cpu().numpy()[0]],
-                    )
-                )
-
-            print("Tested", i + 1, "of", n_test_files, "files.")
-
-    micro_accuracy = 100 * correct / total
-    macro_accuracy = 0
-    sampled_classes = 0
-    for i in range(len(classes)):
-        if total_per_class[i] > 0:
-            macro_accuracy += correct_per_class[i] / total_per_class[i]
-            sampled_classes += 1
-    macro_accuracy = 100 * macro_accuracy / sampled_classes
-
-    accuracy = macro_accuracy
-
-    confusion_matrix = confusion_matrix(
-        actual_classes,
-        predicted_classes,
-    )
-    cm_df = pd.DataFrame(
-        confusion_matrix,
-    )
-    ax = sns.heatmap(cm_df, fmt="d", cmap="YlGnBu", cbar=False, annot=True)
-
-    plt.ylabel("True label")
-    plt.xlabel("Predicted label")
-    plt.title("Confusion Matrix")
-
-    print()
-    print("Macro-accuracy:", str(accuracy) + "%. Details (considering MICRO-accuracy):")
-    # confusion_matrix.print_stats()
+            print(f"For file at {path[0]}, model predicts: {predicted_classes}")
+            # add a new column 'prediction' to the corresponding row in the data_frame
+            data_frame.loc[
+                data_frame["image_path"] == path[0], "prediction"
+            ] = predicted_class
 
     # time
     print()
@@ -182,7 +138,9 @@ if __name__ == "__main__":
     print("Testing elapsed time:", elapsed_time)
 
     os.makedirs(os.path.join("results", "test"), exist_ok=True)
-    with open(
+
+    # save the updated data_frame as csv
+    data_frame.to_csv(
         os.path.join(
             "results",
             "test",
@@ -190,20 +148,5 @@ if __name__ == "__main__":
             + "--"
             + model_file.replace(".pth", ".txt"),
         ),
-        "w",
-    ) as results_txt:
-        results_txt.write(
-            "Macro-accuracy: "
-            + str(accuracy)
-            + "%. Details (considering MICRO-accuracy):\n\n"
-        )
-        # results_txt.write(str(confusion_matrix.stats()))
-        results_txt.write("\n\nWRONG PREDICTIONS:\n\n")
-        for wrong_prediction in wrong_predictions:
-            path, label, prediction = wrong_prediction
-            results_txt.write(
-                path + " is " + label + " and was predicted as " + prediction + "\n"
-            )
-        results_txt.write("\n\nTime: " + elapsed_time)
-
-    plt.savefig(os.path.join("results", "test", "cm.png"))
+        index=False,
+    )
