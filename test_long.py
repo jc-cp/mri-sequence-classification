@@ -164,7 +164,6 @@ def perform_prognosis_on_csvs(
             # test
             net.load_state_dict(torch.load(os.path.join(models_dir, model_file)))
             net.eval()
-            predicted_classes = []
             with torch.no_grad():
                 for i, (pixel_data, path) in tqdm(
                     enumerate(test_loader),
