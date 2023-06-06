@@ -12,11 +12,13 @@ import torch.utils.data as data
 from MedicalDataset_long import MedicalDataset
 from models import select_net
 from time_util import time_format
+import os
+import csv
+from tqdm import tqdm
+from config import BASE_DIR_NO_OPS, OUTPUT_DIR, GET_CSV, MODELS_DIR
+from statistics import mode
 
 # TODO:
-# change the test_data_path
-# check default for 3D
-# check column of csv -- currently: 'data-frame'
 # check storage of prediciton
 
 
@@ -28,7 +30,7 @@ def parse_args():
         type=str,
         # required=True,
         help="Path containing data to be tested.",
-        default="data_csv/generated/own_tests_brats2020/test.csv",
+        default=OUTPUT_DIR,
     )
     parser.add_argument(
         "-m",
@@ -75,78 +77,139 @@ def fix_random_seeds():
     numpy.random.seed(1)
 
 
+def get_files_and_write_to_csv(base_dir, output_dir):
+    # check if output directory exists, if not create it
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # loop through patient_id directories
+    for patient in os.listdir(base_dir):
+        patient_path = os.path.join(base_dir, patient)
+
+        # check if it is a directory
+        if os.path.isdir(patient_path):
+            file_paths = []
+
+            # loop through scan_id directories
+            for scan in os.listdir(patient_path):
+                scan_path = os.path.join(patient_path, scan)
+
+                # check if it is a directory
+                if os.path.isdir(scan_path):
+                    # loop through files in files directory
+                    for file in os.listdir(scan_path):
+                        file_path = os.path.join(scan_path, file)
+
+                        # check if it is a file, not a directory
+                        if os.path.isfile(file_path):
+                            file_paths.append(file_path)
+
+            # if there are any files, write them to a CSV
+            if file_paths:
+                with open(
+                    os.path.join(output_dir, f"{patient}_file_paths.csv"),
+                    "w",
+                    newline="",
+                ) as f:
+                    fieldnames = ["Path", "Prognosis"]
+                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+                    for path in file_paths:
+                        writer.writerow({"Path": path, "Prognosis": ""})
+
+
+def perform_prognosis_on_csvs(
+    test_data_path,
+    model_file,
+    n_slices,
+    tridim,
+    consider_other_class,
+    architecture,
+    models_dir,
+):
+    # Make sure the models_dir is a directory
+    assert os.path.isdir(models_dir), f"{models_dir} is not a directory."
+    assert os.path.isdir(test_data_path), f"{test_data_path} is not a directory."
+
+    for csv_file in tqdm(os.listdir(test_data_path), desc="Processing CSVs"):
+        if csv_file.endswith(".csv"):
+            csv_path = os.path.join(test_data_path, csv_file)
+            data_frame = pd.read_csv(csv_path)
+
+            fix_random_seeds()
+
+            test_set = MedicalDataset(
+                csv_path,
+                min_slices=n_slices,
+                consider_other_class=consider_other_class,
+            )
+
+            skipped_data = test_set.skipped_data
+
+            for file in skipped_data:
+                data_frame.loc[data_frame["Path"] == file, "Prognosis"] = "other"
+
+            test_loader = data.DataLoader(test_set, num_workers=8, pin_memory=True)
+
+            n_test_files = test_set.__len__()
+            classes = ["FLAIR", "T1", "T1c", "T2", "OTHER"]
+
+            net = select_net(architecture, n_slices, tridim, consider_other_class)
+
+            if torch.cuda.is_available():
+                net = net.cuda()
+
+            start_time = time.time()
+
+            # test
+            net.load_state_dict(torch.load(os.path.join(models_dir, model_file)))
+            net.eval()
+            predicted_classes = []
+            with torch.no_grad():
+                for i, (pixel_data, path) in tqdm(
+                    enumerate(test_loader),
+                    total=len(test_loader),
+                    desc=f"Predicting from {csv_file}",
+                ):
+                    if tridim:
+                        pixel_data = pixel_data.view(-1, 1, 10, 200, 200)
+
+                    outputs = net(pixel_data.cuda())
+                    _, predicted = torch.max(outputs.data, 1)
+
+                    predicted_class = classes[predicted.cpu().numpy()[0]]
+                    print(f"For file at {path[0]}, model predicts: {predicted_class}")
+
+                    # find the corresponding row in data_frame and set its 'Prognosis' value
+                    # Assuming 'path' is a batch with a single file path string
+                    current_file_path = path[0]
+                    data_frame.loc[
+                        data_frame["Path"] == current_file_path, "Prognosis"
+                    ] = predicted_class
+
+                # save the data_frame with the new 'Prognosis' values to the csv file
+                data_frame.to_csv(csv_path, index=False)
+
+            # time
+            print()
+            end_time = time.time()
+            elapsed_time = time_format(end_time - start_time)
+            print(
+                "Testing elapsed time for file {0}: {1}".format(csv_file, elapsed_time)
+            )
+
+
 if __name__ == "__main__":
-    args = parse_args()
-    test_data_path = args.test_data_path
-    data_frame = pd.read_csv(test_data_path)
-    model_file = args.model_file
-    n_slices = args.slices
-    tridim = args.tridim
-    consider_other_class = not args.no_other
-    architecture = args.net
-    models_dir = "/mnt/93E8-0534/JuanCarlos/mri-classifcation-pretrained-models/Models"
-
-    assert architecture in ["resnet18", "alexnet", "vgg", "squeezenet", "mobilenet"]
-
-    fix_random_seeds()
-
-    test_set = MedicalDataset(
-        test_data_path,
-        min_slices=n_slices,
-        consider_other_class=consider_other_class,
-        test=True,
-        predict=True,
-    )
-    test_loader = data.DataLoader(test_set, num_workers=8, pin_memory=True)
-    # test_loader = data.DataLoader(test_set, pin_memory = True)
-
-    n_test_files = test_set.__len__()
-    classes = ["FLAIR", "T1", "T1c", "T2", "OTHER"]  # train_set.classes
-
-    net = select_net(architecture, n_slices, tridim, consider_other_class)
-
-    if torch.cuda.is_available():
-        net = net.cuda()
-
-    start_time = time.time()
-
-    # test
-    net.load_state_dict(torch.load(os.path.join(models_dir, model_file)))
-    net.eval()
-    predicted_classes = []
-    with torch.no_grad():
-        for i, (pixel_data, path) in enumerate(test_loader):
-            if tridim:
-                pixel_data = pixel_data.view(-1, 1, 10, 200, 200)
-
-            outputs = net(pixel_data.cuda())
-            _, predicted = torch.max(outputs.data, 1)
-
-            predicted_class = classes[predicted.cpu().numpy()[0]]
-            predicted_classes.append(predicted_class)
-
-            print(f"For file at {path[0]}, model predicts: {predicted_classes}")
-            # add a new column 'prediction' to the corresponding row in the data_frame
-            data_frame.loc[
-                data_frame["image_path"] == path[0], "prediction"
-            ] = predicted_class
-
-    # time
-    print()
-    end_time = time.time()
-    elapsed_time = time_format(end_time - start_time)
-    print("Testing elapsed time:", elapsed_time)
-
-    os.makedirs(os.path.join("results", "test"), exist_ok=True)
-
-    # save the updated data_frame as csv
-    data_frame.to_csv(
-        os.path.join(
-            "results",
-            "test",
-            test_data_path.replace(os.sep, "_").replace(".", "_")
-            + "--"
-            + model_file.replace(".pth", ".txt"),
-        ),
-        index=False,
-    )
+    if GET_CSV:
+        get_files_and_write_to_csv(BASE_DIR_NO_OPS, OUTPUT_DIR)
+    else:
+        args = parse_args()
+        perform_prognosis_on_csvs(
+            args.test_data_path,
+            args.model_file,
+            args.slices,
+            args.tridim,
+            not args.no_other,
+            args.net,
+            MODELS_DIR,
+        )

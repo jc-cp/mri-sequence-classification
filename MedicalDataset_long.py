@@ -1,7 +1,6 @@
 import os
 import random
 import time
-from math import ceil, floor
 
 import cv2
 import nibabel
@@ -10,15 +9,10 @@ import pandas
 import SimpleITK as sitk
 import torch
 import torchvision.transforms.functional as TF
-from imgaug import augmenters as aug
 from SimpleITK import ImageSeriesReader
 from torch.utils.data import Dataset
 
 from time_util import time_format
-
-
-# TODO:
-# check row header -- 'image_path'
 
 
 class MedicalDataset(Dataset):
@@ -27,24 +21,26 @@ class MedicalDataset(Dataset):
         data_csv,
         min_slices=10,
         consider_other_class=True,
-        predict=False,
     ):
         self.images = pandas.read_csv(data_csv)
         self.min_slices = min_slices
         self.consider_other_class = consider_other_class
-        self.predict = predict
-        self.loaded_data = self.load_data()
+        self.loaded_data, self.skipped_data = self.load_data()
         if not self.consider_other_class:
             print("Actually loaded:", self.__len__(), '("Other" class discarded)')
 
     def load_data(self):
         data = []
+        skipped_data = []
         start = time.time()
-        print("Starting loading data...")
-        # print(self.images), exit()
         for i, row in self.images.iterrows():
-            image_path = os.path.join(os.getcwd(), row["image_path"])
-            print("Loading", image_path)
+            image_path = os.path.join(os.getcwd(), row["Path"])
+
+            # Skip files that end with .bvec or .bval
+            if image_path.endswith(".bvec") or image_path.endswith(".bval"):
+                skipped_data.append(image_path)
+                continue
+
             if os.path.isdir(image_path):
                 reader = ImageSeriesReader()
                 sorted_file_names = reader.GetGDCMSeriesFileNames(image_path)
@@ -63,6 +59,12 @@ class MedicalDataset(Dataset):
                 pixel_data = numpy.array(
                     [cv2.cvtColor(slice, cv2.COLOR_RGB2GRAY) for slice in pixel_data]
                 )
+
+            # Ensure pixel_data has exactly 3 dimensions
+            if pixel_data.ndim == 4:
+                print("Skipping 4D image", image_path)
+                skipped_data.append(image_path)
+                continue
 
             n_slices = pixel_data.shape[0]
 
@@ -100,7 +102,8 @@ class MedicalDataset(Dataset):
                 ratio = min_dim / max_dim
                 zoom_out = numpy.zeros(pixel_data.shape).astype(numpy.uint8)
                 for i, slice in enumerate(pixel_data):
-                    slice = cv2.resize(slice, (0, 0), fx=ratio, fy=ratio)
+                    if ratio != 0:
+                        slice = cv2.resize(slice, (0, 0), fx=ratio, fy=ratio)
                     zoom_out[i, : slice.shape[0], : slice.shape[1]] = slice
                     """ymin = zoom_out.shape[1]//2 - floor(slice.shape[0]/2)
                     ymax = zoom_out.shape[1]//2 + ceil(slice.shape[0]/2)
@@ -126,7 +129,7 @@ class MedicalDataset(Dataset):
                 "" if self.consider_other_class else "(counting discarded).",
             )
         print("\nLoading time:", time_format(time.time() - start))
-        return data
+        return data, skipped_data
 
     def rotate(self, image):
         def cos(vector1, vector2):
