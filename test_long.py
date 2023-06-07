@@ -3,8 +3,6 @@ import os
 import random
 import time
 import pandas as pd
-
-import matplotlib.pyplot as plt
 import numpy
 import torch
 import torch.utils.data as data
@@ -17,9 +15,6 @@ import csv
 from tqdm import tqdm
 from config import BASE_DIR_NO_OPS, OUTPUT_DIR, GET_CSV, MODELS_DIR
 from statistics import mode
-
-# TODO:
-# check storage of prediciton
 
 
 def parse_args():
@@ -52,12 +47,6 @@ def parse_args():
         dest="tridim",
         action="store_true",
         help="Use if the trained model used tridimensional convolution.",
-    )
-    parser.add_argument(
-        "--no-other",
-        dest="no_other",
-        action="store_true",
-        help='If specified, "Other" class is not considered.',
     )
     parser.add_argument(
         "--net",
@@ -118,12 +107,18 @@ def get_files_and_write_to_csv(base_dir, output_dir):
                         writer.writerow({"Path": path, "Prognosis": ""})
 
 
+def custom_collate(batch):
+    batch = list(filter(lambda x: x[0] is not None, batch))
+    if len(batch) == 0:  # All items were None
+        return None
+    return torch.utils.data.dataloader.default_collate(batch)
+
+
 def perform_prognosis_on_csvs(
     test_data_path,
     model_file,
     n_slices,
     tridim,
-    consider_other_class,
     architecture,
     models_dir,
 ):
@@ -134,60 +129,78 @@ def perform_prognosis_on_csvs(
     for csv_file in tqdm(os.listdir(test_data_path), desc="Processing CSVs"):
         if csv_file.endswith(".csv"):
             csv_path = os.path.join(test_data_path, csv_file)
-            data_frame = pd.read_csv(csv_path)
+            df = pd.read_csv(csv_path)
+
+            # Assign 'OTHER' to the 'Prognosis' column where the 'Path' ends with .bvec or .bval
+            df.loc[
+                df["Path"].str.endswith((".bvec" or ".bval")), "Prognosis"
+            ] = "NO PREDICTION - METADATA"
 
             fix_random_seeds()
 
             test_set = MedicalDataset(
-                csv_path,
+                dataframe=df,
                 min_slices=n_slices,
-                consider_other_class=consider_other_class,
             )
 
-            skipped_data = test_set.skipped_data
+            updated_df = test_set.get_dataframe()
 
-            for file in skipped_data:
-                data_frame.loc[data_frame["Path"] == file, "Prognosis"] = "other"
-
-            test_loader = data.DataLoader(test_set, num_workers=8, pin_memory=True)
-
+            test_loader = data.DataLoader(
+                test_set, num_workers=1, pin_memory=True, collate_fn=custom_collate
+            )
             n_test_files = test_set.__len__()
             classes = ["FLAIR", "T1", "T1c", "T2", "OTHER"]
 
-            net = select_net(architecture, n_slices, tridim, consider_other_class)
+            net = select_net(architecture, n_slices, tridim, consider_other_class=True)
 
             if torch.cuda.is_available():
                 net = net.cuda()
 
             start_time = time.time()
 
+            print("number slices: ", n_slices)
+            print("number of volumes for inference", n_test_files)
+            print("length of dataframe", len(updated_df))
+
             # test
             net.load_state_dict(torch.load(os.path.join(models_dir, model_file)))
             net.eval()
             with torch.no_grad():
-                for i, (pixel_data, path) in tqdm(
+                for i, batch in tqdm(
                     enumerate(test_loader),
                     total=len(test_loader),
                     desc=f"Predicting from {csv_file}",
                 ):
+                    if batch is None:  # Skip if data is None
+                        continue
+
+                    pixel_data, path = batch
+
+                    current_file_path = path[0]
                     if tridim:
                         pixel_data = pixel_data.view(-1, 1, 10, 200, 200)
 
-                    outputs = net(pixel_data.cuda())
-                    _, predicted = torch.max(outputs.data, 1)
+                    try:
+                        outputs = net(pixel_data.cuda())
+                        _, predicted = torch.max(outputs.data, 1)
 
-                    predicted_class = classes[predicted.cpu().numpy()[0]]
-                    print(f"For file at {path[0]}, model predicts: {predicted_class}")
+                        predicted_class = classes[predicted.cpu().numpy()[0]]
+                        print(
+                            f"For file {i} at {path[0]}, model predicts: {predicted_class}"
+                        )
 
-                    # find the corresponding row in data_frame and set its 'Prognosis' value
-                    # Assuming 'path' is a batch with a single file path string
-                    current_file_path = path[0]
-                    data_frame.loc[
-                        data_frame["Path"] == current_file_path, "Prognosis"
-                    ] = predicted_class
+                        updated_df.loc[
+                            updated_df["Path"] == current_file_path, "Prognosis"
+                        ] = predicted_class
 
-                # save the data_frame with the new 'Prognosis' values to the csv file
-                data_frame.to_csv(csv_path, index=False)
+                    except Exception as e:
+                        print(f"Error processing file {i} at {path[0]}: {str(e)}")
+                        updated_df.loc[
+                            updated_df["Path"] == current_file_path, "Prognosis"
+                        ] = "PREDICTION ERROR"
+
+            # save the data_frame with the new 'Prognosis' values to the csv file
+            updated_df.to_csv(csv_path, index=False)
 
             # time
             print()
@@ -208,7 +221,6 @@ if __name__ == "__main__":
             args.model_file,
             args.slices,
             args.tridim,
-            not args.no_other,
             args.net,
             MODELS_DIR,
         )

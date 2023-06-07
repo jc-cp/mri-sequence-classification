@@ -14,40 +14,52 @@ from torch.utils.data import Dataset
 
 from time_util import time_format
 
+# TODO:
+# - check number of slices, right now fixed to 16, if not error,
+# - take the best model from the paper! e.g. the one trained for specified number of slices
+
 
 class MedicalDataset(Dataset):
     def __init__(
         self,
-        data_csv,
+        dataframe,
         min_slices=10,
-        consider_other_class=True,
     ):
-        self.images = pandas.read_csv(data_csv)
         self.min_slices = min_slices
-        self.consider_other_class = consider_other_class
-        self.loaded_data, self.skipped_data = self.load_data()
-        if not self.consider_other_class:
-            print("Actually loaded:", self.__len__(), '("Other" class discarded)')
+        self.images = dataframe.copy()
+        self.original_indexes = (
+            dataframe.index.to_list()
+        )  # Keep track of original indexes
+        self.loaded_data = self.load_data()
 
     def load_data(self):
         data = []
-        skipped_data = []
         start = time.time()
-        for i, row in self.images.iterrows():
-            image_path = os.path.join(os.getcwd(), row["Path"])
+        counter = 0
+        pixel_data = None
 
-            # Skip files that end with .bvec or .bval
-            if image_path.endswith(".bvec") or image_path.endswith(".bval"):
-                skipped_data.append(image_path)
+        for i, row in self.images.iterrows():
+            counter += 1
+            image_path = row["Path"]
+            print("Loading", counter, "/", len(self.images), image_path)
+
+            if (
+                row["Path"].endswith((".bvec", ".bval"))
+                and row["Prognosis"] == "NO PREDICTION - METADATA"
+            ):
+                print("Already flagged row. Skipping", image_path)
+                data.append(None)
                 continue
 
-            if os.path.isdir(image_path):
-                reader = ImageSeriesReader()
-                sorted_file_names = reader.GetGDCMSeriesFileNames(image_path)
-                reader.SetFileNames(sorted_file_names)
-                image = reader.Execute()
-            else:
+            try:
                 image = sitk.ReadImage(image_path)
+            except RuntimeError:
+                print("Skipping a non readbale image due to metadata", image_path)
+                self.images.loc[
+                    self.images["Path"] == image_path, "Prognosis"
+                ] = "NO PREDICTION - FILE ERROR "
+                data.append(None)
+                continue
 
             pixel_data, color_channels, direction = (
                 self.normalize(sitk.GetArrayFromImage(image)),
@@ -61,14 +73,16 @@ class MedicalDataset(Dataset):
                 )
 
             # Ensure pixel_data has exactly 3 dimensions
-            if pixel_data.ndim == 4:
-                print("Skipping 4D image", image_path)
-                skipped_data.append(image_path)
+            if pixel_data.ndim >= 4:
+                print("Skipping a non 3D image", image_path)
+                self.images.loc[
+                    self.images["Path"] == image_path, "Prognosis"
+                ] = "NO PREDICTION - DIMS"
+                data.append(None)
                 continue
 
             n_slices = pixel_data.shape[0]
-
-            min_slices = 16  # self.min_slices
+            min_slices = 16  # self.min_slices  # was harcore 16 before
             if n_slices < min_slices:
                 extended = numpy.zeros(
                     (min_slices, pixel_data.shape[1], pixel_data.shape[2])
@@ -81,10 +95,10 @@ class MedicalDataset(Dataset):
                     :,
                     :,
                 ] = pixel_data.copy()
-                for i in range(min_slices // 2 - n_slices // 2):
-                    extended[i] = pixel_data[0]
-                for i in range(min_slices // 2 + n_slices // 2 + 1, min_slices):
-                    extended[i] = pixel_data[-1]
+                for j in range(min_slices // 2 - n_slices // 2):
+                    extended[j] = pixel_data[0]
+                for j in range(min_slices // 2 + n_slices // 2 + 1, min_slices):
+                    extended[j] = pixel_data[-1]
                 pixel_data = extended
             else:
                 pixel_data = pixel_data[
@@ -93,26 +107,40 @@ class MedicalDataset(Dataset):
                     + min_slices // 2
                     + min_slices % 2
                 ]
-                # pixel_data = numpy.array([pixel_data[int(i*n_slices/(min_slices+1))] for i in range(1, min_slices + 1)])
 
             height, width = pixel_data.shape[1], pixel_data.shape[2]
             if height != width:
                 min_dim = min(height, width)
                 max_dim = max(height, width)
-                ratio = min_dim / max_dim
                 zoom_out = numpy.zeros(pixel_data.shape).astype(numpy.uint8)
-                for i, slice in enumerate(pixel_data):
-                    if ratio != 0:
-                        slice = cv2.resize(slice, (0, 0), fx=ratio, fy=ratio)
-                    zoom_out[i, : slice.shape[0], : slice.shape[1]] = slice
-                    """ymin = zoom_out.shape[1]//2 - floor(slice.shape[0]/2)
-                    ymax = zoom_out.shape[1]//2 + ceil(slice.shape[0]/2)
-                    xmin = zoom_out.shape[2]//2 - floor(slice.shape[1]/2)
-                    xmax = zoom_out.shape[2]//2 + ceil(slice.shape[1]/2)
-                    zoom_out[i, ymin:ymax, xmin:xmax] = slice"""
+                if min_dim != 0:
+                    ratio = min_dim / max_dim
+                    for i, slice in enumerate(pixel_data):
+                        if (
+                            slice.shape[0] > 0 and slice.shape[1] > 0
+                        ):  # check if the slice has a valid shape
+                            if slice.shape[0] > slice.shape[1]:  # if height > width
+                                new_dim = (min_dim, int(slice.shape[0] * ratio))
+                            else:  # if width >= height
+                                new_dim = (int(slice.shape[1] * ratio), min_dim)
+                            slice = cv2.resize(slice, new_dim)
+                            zoom_out[i, : slice.shape[0], : slice.shape[1]] = slice
+                        else:
+                            print(f"Skipping resize for slice {i} due to zero shape.")
+                else:
+                    print(
+                        f"Skipping slice {image_path} resizing due to shape {slice.shape}"
+                    )
+                    self.images.loc[
+                        self.images["Path"] == image_path, "Prognosis"
+                    ] = "NO PREDICTION - SLICE ERROR"
+                    data.append(None)
+                    continue
+
                 pixel_data = zoom_out
                 pixel_data = pixel_data[:, :min_dim, :min_dim]
                 assert pixel_data.shape[1] == pixel_data.shape[2]
+
             pixel_data = numpy.array(
                 [cv2.resize(slice, (200, 200)) for slice in pixel_data]
             )
@@ -121,15 +149,11 @@ class MedicalDataset(Dataset):
 
             data.append(pixel_data)
 
-            print(
-                "Loaded",
-                i + 1,
-                "/",
-                len(self.images),
-                "" if self.consider_other_class else "(counting discarded).",
-            )
         print("\nLoading time:", time_format(time.time() - start))
-        return data, skipped_data
+        return data
+
+    def get_dataframe(self):
+        return self.images
 
     def rotate(self, image):
         def cos(vector1, vector2):
@@ -259,6 +283,12 @@ class MedicalDataset(Dataset):
     def __getitem__(self, idx):
         image = self.loaded_data[idx]
         path, _ = self.images.iloc[idx]
+
+        # Check if image is None
+        if image is None:
+            # Return a special value that you can check for later
+            return (None, path)
+
         first_slice_idx = numpy.random.randint(16 - self.min_slices + 1)
         last_slice_idx = first_slice_idx + self.min_slices
         image = image[first_slice_idx:last_slice_idx]
