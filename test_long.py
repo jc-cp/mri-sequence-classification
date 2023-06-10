@@ -13,7 +13,18 @@ from time_util import time_format
 import os
 import csv
 from tqdm import tqdm
-from config import BASE_DIR_NO_OPS, OUTPUT_DIR, GET_CSV, MODELS_DIR
+from config import (
+    BASE_DIR_NO_OPS,
+    OUTPUT_DIR_NO_OPS,
+    GET_CSV,
+    MODELS_DIR,
+    BASE_DIR_MIXED,
+    OUTPUT_DIR_MIXED,
+    BASE_DIR_DGM,
+    BASE_DIR_RADART,
+    OUTPUT_DIR_DGM,
+    OUTPUT_DIR_RADART,
+)
 from statistics import mode
 
 
@@ -25,7 +36,7 @@ def parse_args():
         type=str,
         # required=True,
         help="Path containing data to be tested.",
-        default=OUTPUT_DIR,
+        default=OUTPUT_DIR_RADART,
     )
     parser.add_argument(
         "-m",
@@ -100,7 +111,7 @@ def get_files_and_write_to_csv(base_dir, output_dir):
                     "w",
                     newline="",
                 ) as f:
-                    fieldnames = ["Path", "Prognosis"]
+                    fieldnames = ["Path", "Prognosis", "Image Spacing [x,y,z]"]
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
                     for path in file_paths:
@@ -213,7 +224,7 @@ def perform_prognosis_on_csvs(
 
 if __name__ == "__main__":
     if GET_CSV:
-        get_files_and_write_to_csv(BASE_DIR_NO_OPS, OUTPUT_DIR)
+        get_files_and_write_to_csv(BASE_DIR_RADART, OUTPUT_DIR_RADART)
     else:
         args = parse_args()
         perform_prognosis_on_csvs(

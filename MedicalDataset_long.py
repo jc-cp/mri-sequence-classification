@@ -53,6 +53,10 @@ class MedicalDataset(Dataset):
 
             try:
                 image = sitk.ReadImage(image_path)
+                spacing = str(image.GetSpacing())  # Store the voxel spacing
+                self.images.loc[
+                    self.images["Path"] == image_path, "Image Spacing [x,y,z]"
+                ] = spacing  # store spacing in the dataframe
             except RuntimeError:
                 print("Skipping a non readbale image due to metadata", image_path)
                 self.images.loc[
@@ -282,7 +286,7 @@ class MedicalDataset(Dataset):
 
     def __getitem__(self, idx):
         image = self.loaded_data[idx]
-        path, _ = self.images.iloc[idx]
+        path, _, _ = self.images.iloc[idx]
 
         # Check if image is None
         if image is None:
