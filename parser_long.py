@@ -26,49 +26,45 @@ ignore_strings = [
     "csp",
 ]
 
-# Iterate through each main directory
 for main_dir in main_directories:
-    # Create sub-directories within main directory
     for sub_dir in sub_directories:
         os.makedirs(os.path.join(main_dir, sub_dir), exist_ok=True)
 
-    # List all csv files in the directory
     csv_files = [f for f in os.listdir(main_dir) if f.endswith(".csv")]
-    # Iterate through each .csv file in the main directory
+
     for file_name in csv_files:
         print(f"\tProcessing file: {file_name}")
-        # Load the .csv file as a pandas DataFrame
+
         df = pd.read_csv(os.path.join(main_dir, file_name))
 
         # Handle 'NO PREDICTION' special case
-        no_prediction_df = df[df["Prognosis"].str.startswith("NO PREDICTION")]
+        no_prediction_df = df[df["Prediction"].str.startswith("NO PREDICTION")]
         if not no_prediction_df.empty:
             no_prediction_df.to_csv(
                 os.path.join(main_dir, "NO PREDICTION", file_name), index=False
             )
             # Copy files to 'NO PREDICTION' sub-folder
             for _, row in no_prediction_df.iterrows():
+                assert os.path.exists(row["Path"])
                 if not any(
-                    ignore_string in row["path"] for ignore_string in ignore_strings
+                    ignore_string in row["Path"] for ignore_string in ignore_strings
                 ):
-                    shutil.copy(row["path"], os.path.join(main_dir, "NO PREDICTION"))
+                    shutil.copy(row["Path"], os.path.join(main_dir, "NO PREDICTION"))
 
-        # Iterate through each type of prediction and create corresponding .csv files in subfolders
         for prediction in sub_directories:
             if (
                 prediction != "NO PREDICTION"
             ):  # Skip 'NO PREDICTION' as it has been handled
-                # Filter the DataFrame for the current type of prediction
-                df_filtered = df[df["Prognosis"] == prediction]
+                df_filtered = df[df["Prediction"] == prediction]
 
-                # If there are any rows of this prediction type, save them in a new .csv file
                 if not df_filtered.empty:
                     df_filtered.to_csv(
                         os.path.join(main_dir, prediction, file_name), index=False
                     )
                     for _, row in df_filtered.iterrows():
+                        assert os.path.exists(row["Path"])
                         if not any(
-                            ignore_string in row["path"]
+                            ignore_string in row["Path"]
                             for ignore_string in ignore_strings
                         ):
-                            shutil.copy(row["path"], os.path.join(main_dir, prediction))
+                            shutil.copy(row["Path"], os.path.join(main_dir, prediction))
