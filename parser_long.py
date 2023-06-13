@@ -3,6 +3,13 @@ import os
 import shutil
 from parser_long_cfg import DIR_DGM, DIR_MIXED, DIR_NO_OPS, DIR_RADART
 
+
+def extract_ids_from_path(path):
+    # Extract the patient and scan ids from the file path
+    ids = path.split("/")[-3:-1]
+    return ids
+
+
 # Specify the names of the directories here
 main_directories = [
     # DIR_RADART,
@@ -24,7 +31,9 @@ ignore_strings = [
     "tsp",
     "lsp",
     "csp",
+    "t1_flair",
 ]
+
 
 for main_dir in main_directories:
     for sub_dir in sub_directories:
@@ -49,7 +58,14 @@ for main_dir in main_directories:
                 if not any(
                     ignore_string in row["Path"] for ignore_string in ignore_strings
                 ):
-                    shutil.copy(row["Path"], os.path.join(main_dir, "NO PREDICTION"))
+                    patient_id, scan_id = extract_ids_from_path(row["Path"])
+                    dest_path = os.path.join(
+                        main_dir,
+                        "NO PREDICTION",
+                        f'{patient_id}_{scan_id}_{os.path.basename(row["Path"])}',
+                    )
+                    if not os.path.exists(dest_path):
+                        shutil.copy(row["Path"], dest_path)
 
         for prediction in sub_directories:
             if (
@@ -67,4 +83,12 @@ for main_dir in main_directories:
                             ignore_string in row["Path"]
                             for ignore_string in ignore_strings
                         ):
-                            shutil.copy(row["Path"], os.path.join(main_dir, prediction))
+                            patient_id, scan_id = extract_ids_from_path(row["Path"])
+                            dest_path = os.path.join(
+                                main_dir,
+                                prediction,
+                                f'{patient_id}_{scan_id}_{os.path.basename(row["Path"])}',
+                            )
+
+                            if not os.path.exists(dest_path):
+                                shutil.copy(row["Path"], dest_path)
