@@ -36,7 +36,7 @@ def parse_args():
         type=str,
         # required=True,
         help="Path containing data to be tested.",
-        default=OUTPUT_DIR_RADART,
+        default=OUTPUT_DIR_NO_OPS,
     )
     parser.add_argument(
         "-m",
@@ -111,11 +111,16 @@ def get_files_and_write_to_csv(base_dir, output_dir):
                     "w",
                     newline="",
                 ) as f:
-                    fieldnames = ["Path", "Prognosis", "Image Spacing [x,y,z]"]
+                    fieldnames = [
+                        "Path",
+                        "Prediction",
+                        "Image Spacing (x,y,z)",
+                        "Image Orientation (Anatomical)",
+                    ]
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
                     for path in file_paths:
-                        writer.writerow({"Path": path, "Prognosis": ""})
+                        writer.writerow({"Path": path, "Prediction": ""})
 
 
 def custom_collate(batch):
@@ -142,9 +147,9 @@ def perform_prognosis_on_csvs(
             csv_path = os.path.join(test_data_path, csv_file)
             df = pd.read_csv(csv_path)
 
-            # Assign 'OTHER' to the 'Prognosis' column where the 'Path' ends with .bvec or .bval
+            # Assign 'OTHER' to the 'Prediction' column where the 'Path' ends with .bvec or .bval
             df.loc[
-                df["Path"].str.endswith((".bvec" or ".bval")), "Prognosis"
+                df["Path"].str.endswith((".bvec", ".bval")), "Prediction"
             ] = "NO PREDICTION - METADATA"
 
             fix_random_seeds()
@@ -201,16 +206,16 @@ def perform_prognosis_on_csvs(
                         )
 
                         updated_df.loc[
-                            updated_df["Path"] == current_file_path, "Prognosis"
+                            updated_df["Path"] == current_file_path, "Prediction"
                         ] = predicted_class
 
                     except Exception as e:
                         print(f"Error processing file {i} at {path[0]}: {str(e)}")
                         updated_df.loc[
-                            updated_df["Path"] == current_file_path, "Prognosis"
+                            updated_df["Path"] == current_file_path, "Prediction"
                         ] = "PREDICTION ERROR"
 
-            # save the data_frame with the new 'Prognosis' values to the csv file
+            # save the data_frame with the new 'Prediction' values to the csv file
             updated_df.to_csv(csv_path, index=False)
 
             # time
@@ -224,7 +229,7 @@ def perform_prognosis_on_csvs(
 
 if __name__ == "__main__":
     if GET_CSV:
-        get_files_and_write_to_csv(BASE_DIR_RADART, OUTPUT_DIR_RADART)
+        get_files_and_write_to_csv(BASE_DIR_NO_OPS, OUTPUT_DIR_NO_OPS)
     else:
         args = parse_args()
         perform_prognosis_on_csvs(

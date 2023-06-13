@@ -3,7 +3,7 @@ import random
 import time
 
 import cv2
-import nibabel
+import nibabel as nib
 import numpy
 import pandas
 import SimpleITK as sitk
@@ -45,22 +45,29 @@ class MedicalDataset(Dataset):
 
             if (
                 row["Path"].endswith((".bvec", ".bval"))
-                and row["Prognosis"] == "NO PREDICTION - METADATA"
+                and row["Prediction"] == "NO PREDICTION - METADATA"
             ):
                 print("Already flagged row. Skipping", image_path)
                 data.append(None)
                 continue
 
             try:
+                img = nib.load(image_path)
+                spacing = img.header.get_zooms()
+                orientation = nib.aff2axcodes(img.affine)
+
                 image = sitk.ReadImage(image_path)
-                spacing = str(image.GetSpacing())  # Store the voxel spacing
+                # spacing = str(image.GetSpacing())  # Store the ITK voxel spacing
                 self.images.loc[
-                    self.images["Path"] == image_path, "Image Spacing [x,y,z]"
-                ] = spacing  # store spacing in the dataframe
+                    self.images["Path"] == image_path, "Image Spacing (x,y,z)"
+                ] = str(spacing[:3])
+                self.images.loc[
+                    self.images["Path"] == image_path, "Image Orientation (Anatomical)"
+                ] = str(orientation)
             except RuntimeError:
                 print("Skipping a non readbale image due to metadata", image_path)
                 self.images.loc[
-                    self.images["Path"] == image_path, "Prognosis"
+                    self.images["Path"] == image_path, "Prediction"
                 ] = "NO PREDICTION - FILE ERROR "
                 data.append(None)
                 continue
@@ -80,7 +87,7 @@ class MedicalDataset(Dataset):
             if pixel_data.ndim >= 4:
                 print("Skipping a non 3D image", image_path)
                 self.images.loc[
-                    self.images["Path"] == image_path, "Prognosis"
+                    self.images["Path"] == image_path, "Prediction"
                 ] = "NO PREDICTION - DIMS"
                 data.append(None)
                 continue
@@ -136,7 +143,7 @@ class MedicalDataset(Dataset):
                         f"Skipping slice {image_path} resizing due to shape {slice.shape}"
                     )
                     self.images.loc[
-                        self.images["Path"] == image_path, "Prognosis"
+                        self.images["Path"] == image_path, "Prediction"
                     ] = "NO PREDICTION - SLICE ERROR"
                     data.append(None)
                     continue
@@ -221,25 +228,6 @@ class MedicalDataset(Dataset):
         return pixel_data
 
     def rotate_RAS(self, image):
-        # image = self.normalize(image)
-
-        """sagittal = (round(direction[0]), round(direction[1]), round(direction[2])) #Width, 2 (Lateral)
-        coronal = (round(direction[3]), round(direction[4]), round(direction[5])) #Height, 1 (Front-Back)
-        axial = (round(direction[6]), round(direction[7]), round(direction[8])) #Layers, 0   (Axial)
-
-        'vectors = [axial, coronal, sagittal]"""
-        # shape = [0, 1, 2], random.shuffle(shape)
-        """for i, vector in enumerate(vectors):
-            if -1 in vector:
-                image = numpy.flip(image, axis = vectors.index(vector))
-            
-            if vector in [(1, 0, 0), (-1, 0, 0)]:
-                shape[i] = vectors.index(sagittal)
-            if vector in [(0, 1, 0), (0, -1, 0)]:
-                shape[i] = vectors.index(coronal)
-            if vector in [(0, 0, 1), (0, 0, -1)]:
-                shape[i] = vectors.index(axial)"""
-
         # if shape != [0, 1, 2]:
         # If transposed, matrix must be flipped to achieve the sensation of being rotated over plane
         # image = numpy.flip(numpy.transpose(image, tuple(shape)))
@@ -286,7 +274,7 @@ class MedicalDataset(Dataset):
 
     def __getitem__(self, idx):
         image = self.loaded_data[idx]
-        path, _, _ = self.images.iloc[idx]
+        path, _, _, _ = self.images.iloc[idx]
 
         # Check if image is None
         if image is None:
