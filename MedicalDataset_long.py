@@ -55,6 +55,7 @@ class MedicalDataset(Dataset):
                 img = nib.load(image_path)
                 spacing = img.header.get_zooms()
                 orientation = nib.aff2axcodes(img.affine)
+                shape = img.shape
 
                 image = sitk.ReadImage(image_path)
                 # spacing = str(image.GetSpacing())  # Store the ITK voxel spacing
@@ -64,6 +65,9 @@ class MedicalDataset(Dataset):
                 self.images.loc[
                     self.images["Path"] == image_path, "Image Orientation (Anatomical)"
                 ] = str(orientation)
+                self.images.loc[
+                    self.images["Path"] == image_path, "Image Dimensions (x,y,z)"
+                ] = str(shape)
             except RuntimeError:
                 print("Skipping a non readbale image due to metadata", image_path)
                 self.images.loc[
@@ -274,7 +278,7 @@ class MedicalDataset(Dataset):
 
     def __getitem__(self, idx):
         image = self.loaded_data[idx]
-        path, _, _, _ = self.images.iloc[idx]
+        path, _, _, _, _ = self.images.iloc[idx]
 
         # Check if image is None
         if image is None:

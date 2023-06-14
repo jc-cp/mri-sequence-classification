@@ -116,6 +116,7 @@ def get_files_and_write_to_csv(base_dir, output_dir):
                         "Prediction",
                         "Image Spacing (x,y,z)",
                         "Image Orientation (Anatomical)",
+                        "Image Dimensions (x,y,z)",
                     ]
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
