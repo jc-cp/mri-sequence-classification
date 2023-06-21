@@ -14,10 +14,6 @@ from torch.utils.data import Dataset
 
 from time_util import time_format
 
-# TODO:
-# - check number of slices, right now fixed to 16, if not error,
-# - take the best model from the paper! e.g. the one trained for specified number of slices
-
 
 class MedicalDataset(Dataset):
     def __init__(
@@ -243,10 +239,6 @@ class MedicalDataset(Dataset):
         return pixel_data
 
     def rotate_RAS(self, image):
-        # if shape != [0, 1, 2]:
-        # If transposed, matrix must be flipped to achieve the sensation of being rotated over plane
-        # image = numpy.flip(numpy.transpose(image, tuple(shape)))
-
         for axes in [(1, 0)]:  # [(0, 1), (0, 2), (1, 2)]:
             for n_rots in range(random.choice(range(4))):
                 image = numpy.rot90(image, axes=axes)
@@ -291,7 +283,6 @@ class MedicalDataset(Dataset):
         image = self.loaded_data[idx]
         path, _, _, _, _ = self.images.iloc[idx]
 
-        # Check if image is None
         if image is None:
             # Return a special value that you can check for later
             return (None, path)

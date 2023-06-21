@@ -35,15 +35,13 @@ def parse_args():
         "-t",
         dest="test_data_path",
         type=str,
-        # required=True,
         help="Path containing data to be tested.",
-        default=OUTPUT_DIR_NO_OPS,
+        default=OUTPUT_DIR_DGM,
     )
     parser.add_argument(
         "-m",
         dest="model_file",
         type=str,
-        # required=True,
         help="Name of the trained model file.",
         default="main_sl10.pth",
     )

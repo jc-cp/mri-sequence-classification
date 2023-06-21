@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import shutil
 from parser_long_cfg import DIR_DGM, DIR_MIXED, DIR_NO_OPS, DIR_RADART
+import gc
 
 
 def extract_ids_from_path(path):
@@ -14,8 +15,8 @@ def extract_ids_from_path(path):
 main_directories = [
     # DIR_RADART,
     DIR_NO_OPS,
-    # DIR_MIXED,
-    # DIR_DGM,
+    DIR_MIXED,
+    DIR_DGM,
 ]  # edit this list to process single directories
 
 sub_directories = ["FLAIR", "T1", "T1c", "T2", "OTHER", "NO PREDICTION"]
@@ -113,3 +114,5 @@ for main_dir in main_directories:
                     )
                     if not os.path.exists(dest_path):
                         shutil.copy(row["Path"], dest_path)
+
+        gc.collect()
