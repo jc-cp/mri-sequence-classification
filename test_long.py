@@ -6,6 +6,7 @@ import pandas as pd
 import numpy
 import torch
 import torch.utils.data as data
+import gc
 
 from MedicalDataset_long import MedicalDataset
 from models import select_net
@@ -220,6 +221,11 @@ def perform_prognosis_on_csvs(
                         updated_df.loc[
                             updated_df["Path"] == current_file_path, "Prediction"
                         ] = "PREDICTION ERROR"
+
+            # Invoke garbage collection and CUDA memory clearing right after inner loop
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             # save the data_frame with the new 'Prediction' values to the csv file
             updated_df.to_csv(csv_path, index=False)
