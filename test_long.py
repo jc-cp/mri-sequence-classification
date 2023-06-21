@@ -148,6 +148,11 @@ def perform_prognosis_on_csvs(
             csv_path = os.path.join(test_data_path, csv_file)
             df = pd.read_csv(csv_path)
 
+            # Check if 'Prediction' column is already completely filled
+            if not df["Prediction"].isnull().any():
+                print(f"Skipping {csv_file} as it has already been processed.")
+                continue
+
             # Assign 'OTHER' to the 'Prediction' column where the 'Path' ends with .bvec or .bval
             df.loc[
                 df["Path"].str.endswith((".bvec", ".bval")), "Prediction"

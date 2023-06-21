@@ -32,6 +32,11 @@ ignore_strings = [
     "lsp",
     "csp",
     "t1_flair",
+    "stir",
+    "left",
+    "right",
+    "dti",
+    "dwi",
 ]
 
 for main_dir in main_directories:

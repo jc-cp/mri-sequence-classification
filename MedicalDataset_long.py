@@ -88,8 +88,19 @@ class MedicalDataset(Dataset):
                 )
 
             # Ensure pixel_data has exactly 3 dimensions
-            if pixel_data.ndim >= 4:
-                print("Skipping a non 3D image", image_path)
+            if pixel_data.ndim == 4:
+                # If the image has a singleton dimension, squeeze it out
+                if 1 in pixel_data.shape:
+                    pixel_data = numpy.squeeze(pixel_data)
+                else:
+                    print("Skipping a non 3D convertable image", image_path)
+                    self.images.loc[
+                        self.images["Path"] == image_path, "Prediction"
+                    ] = "NO PREDICTION - DIMS"
+                    data.append(None)
+                    continue
+            elif pixel_data.ndim > 4:
+                print("Skipping a 5D image", image_path)
                 self.images.loc[
                     self.images["Path"] == image_path, "Prediction"
                 ] = "NO PREDICTION - DIMS"
