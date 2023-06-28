@@ -127,5 +127,6 @@ tzdata==2023.3
 urllib3==2.0.2
 wcwidth==0.2.6
 wheel==0.38.4
+wordcloud==1.9.2
 yarg==0.1.9
 yarl==1.9.2
