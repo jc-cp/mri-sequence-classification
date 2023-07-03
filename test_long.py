@@ -6,6 +6,7 @@ import pandas as pd
 import numpy
 import torch
 import torch.utils.data as data
+from torch.cuda.amp import autocast
 import gc
 
 from MedicalDataset_long import MedicalDataset
@@ -36,7 +37,7 @@ def parse_args():
         dest="test_data_path",
         type=str,
         help="Path containing data to be tested.",
-        default=OUTPUT_DIR_DGM,
+        default=OUTPUT_DIR_NO_OPS,
     )
     parser.add_argument(
         "-m",
@@ -130,6 +131,36 @@ def custom_collate(batch):
     return torch.utils.data.dataloader.default_collate(batch)
 
 
+def process_batch(i, batch, net, tridim, classes, updated_df):
+    if batch is None:  # Skip if data is None
+        return updated_df
+
+    pixel_data, path = batch
+    current_file_path = path[0]
+    if tridim:
+        pixel_data = pixel_data.view(-1, 1, 10, 200, 200)
+
+    try:
+        outputs = net(pixel_data.cuda())
+        _, predicted = torch.max(outputs.data, 1)
+
+        predicted_class = classes[predicted.cpu().numpy()[0]]
+        print(f"For file {i} at {path[0]}, model predicts: {predicted_class}")
+
+        updated_df.loc[
+            updated_df["Path"] == current_file_path, "Prediction"
+        ] = predicted_class
+
+    except Exception as e:
+        print(f"Error processing file {i} at {path[0]}: {str(e)}")
+        updated_df.loc[
+            updated_df["Path"] == current_file_path, "Prediction"
+        ] = "PREDICTION ERROR"
+
+    del pixel_data
+    return updated_df
+
+
 def perform_prognosis_on_csvs(
     test_data_path,
     model_file,
@@ -141,6 +172,15 @@ def perform_prognosis_on_csvs(
     # Make sure the models_dir is a directory
     assert os.path.isdir(models_dir), f"{models_dir} is not a directory."
     assert os.path.isdir(test_data_path), f"{test_data_path} is not a directory."
+
+    # Model
+    net = select_net(architecture, n_slices, tridim, consider_other_class=True)
+    net.load_state_dict(torch.load(os.path.join(models_dir, model_file)))
+    net.eval()
+
+    if torch.cuda.is_available():
+        net = net.cuda()
+        net = torch.nn.DataParallel(net)
 
     for csv_file in tqdm(os.listdir(test_data_path), desc="Processing CSVs"):
         if csv_file.endswith(".csv"):
@@ -169,56 +209,24 @@ def perform_prognosis_on_csvs(
             test_loader = data.DataLoader(
                 test_set, num_workers=1, pin_memory=True, collate_fn=custom_collate
             )
-            n_test_files = test_set.__len__()
+
             classes = ["FLAIR", "T1", "T1c", "T2", "OTHER"]
-
-            net = select_net(architecture, n_slices, tridim, consider_other_class=True)
-
-            if torch.cuda.is_available():
-                net = net.cuda()
-
             start_time = time.time()
+            n_test_files = test_set.__len__()
 
-            print("number slices: ", n_slices)
-            print("number of volumes for inference", n_test_files)
-            print("length of dataframe", len(updated_df))
+            print("Number slices: ", n_slices)
+            print("Number of volumes for inference", n_test_files)
+            print("Length of dataframe", len(updated_df))
 
-            # test
-            net.load_state_dict(torch.load(os.path.join(models_dir, model_file)))
-            net.eval()
             with torch.no_grad():
                 for i, batch in tqdm(
                     enumerate(test_loader),
                     total=len(test_loader),
                     desc=f"Predicting from {csv_file}",
                 ):
-                    if batch is None:  # Skip if data is None
-                        continue
-
-                    pixel_data, path = batch
-
-                    current_file_path = path[0]
-                    if tridim:
-                        pixel_data = pixel_data.view(-1, 1, 10, 200, 200)
-
-                    try:
-                        outputs = net(pixel_data.cuda())
-                        _, predicted = torch.max(outputs.data, 1)
-
-                        predicted_class = classes[predicted.cpu().numpy()[0]]
-                        print(
-                            f"For file {i} at {path[0]}, model predicts: {predicted_class}"
-                        )
-
-                        updated_df.loc[
-                            updated_df["Path"] == current_file_path, "Prediction"
-                        ] = predicted_class
-
-                    except Exception as e:
-                        print(f"Error processing file {i} at {path[0]}: {str(e)}")
-                        updated_df.loc[
-                            updated_df["Path"] == current_file_path, "Prediction"
-                        ] = "PREDICTION ERROR"
+                    updated_df = process_batch(
+                        i, batch, net, tridim, classes, updated_df
+                    )
 
             # Invoke garbage collection and CUDA memory clearing right after inner loop
             gc.collect()
