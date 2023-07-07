@@ -2,5 +2,4 @@
 __pycache__/
 .vscode/
 data_csv/long/*
-config.py
 models/*

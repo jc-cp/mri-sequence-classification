@@ -26,6 +26,8 @@ from config import (
     BASE_DIR_RADART,
     OUTPUT_DIR_DGM,
     OUTPUT_DIR_RADART,
+    BASE_DIR_ADDITIONAL,
+    OUTPUT_DIR_ADDITIONAL,
 )
 from statistics import mode
 
@@ -37,7 +39,7 @@ def parse_args():
         dest="test_data_path",
         type=str,
         help="Path containing data to be tested.",
-        default=OUTPUT_DIR_NO_OPS,
+        default=OUTPUT_DIR_ADDITIONAL,
     )
     parser.add_argument(
         "-m",
@@ -247,7 +249,7 @@ def perform_prognosis_on_csvs(
 
 if __name__ == "__main__":
     if GET_CSV:
-        get_files_and_write_to_csv(BASE_DIR_NO_OPS, OUTPUT_DIR_NO_OPS)
+        get_files_and_write_to_csv(BASE_DIR_ADDITIONAL, OUTPUT_DIR_ADDITIONAL)
     else:
         args = parse_args()
         perform_prognosis_on_csvs(

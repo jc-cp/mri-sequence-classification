@@ -11,6 +11,8 @@ from parser_long_cfg import (
     OUT_NIFTI,
     OUT_NO_OPS,
     OUT_RADART,
+    DIR_NO_OPS_ADD,
+    OUT_NO_OPS_ADD,
 )
 import gc
 import sys
@@ -35,13 +37,14 @@ def extract_ids_from_path(path):
 
 # EDIT THIS TO PROCESS ALL OR SINGLE FOLDERS
 main_directories = [
-    DIR_NO_OPS,
+    DIR_NO_OPS_ADD,
 ]
 output_directory_mapping = {
     DIR_DGM: OUT_DGM,
     DIR_RADART: OUT_RADART,
     DIR_MIXED: OUT_NIFTI,
     DIR_NO_OPS: OUT_NO_OPS,
+    DIR_NO_OPS_ADD: OUT_NO_OPS_ADD,
 }
 
 sub_directories = ["FLAIR", "T1", "T1c", "T2", "OTHER", "NO PREDICTION"]
