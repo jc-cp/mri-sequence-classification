@@ -5,11 +5,11 @@ import argparse
 import gc
 import os
 import shutil
+import ast
 
 import pandas as pd
 
 from parser_long_cfg import IN_DIR, OUT_DIR
-import ast
 
 parser = argparse.ArgumentParser(description="Process some files.")
 parser.add_argument(
